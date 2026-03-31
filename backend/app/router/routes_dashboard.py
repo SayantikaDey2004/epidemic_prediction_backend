@@ -1,11 +1,13 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from db.mongodb import prediction_collection
+from app.services.prediction_service import get_prediction_history
+from app.core.security import enforce_api_key, rate_limiter
 
-router = APIRouter()
+router = APIRouter(
+    dependencies=[Depends(enforce_api_key), Depends(rate_limiter)],
+)
+
 
 @router.get("/history")
-async def get_history():
-    cursor = prediction_collection.find({}, {"_id": 0})
-    data = await cursor.to_list(length=None)
-    return data
+async def history():
+    return await get_prediction_history()

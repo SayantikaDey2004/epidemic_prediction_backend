@@ -1,10 +1,11 @@
 from pathlib import Path
+from typing import List
 import joblib
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "model"
 PROJECT_DIR = Path(__file__).resolve().parents[3]
 
-def _load_first_existing(candidates: list[Path]):
+def _load_first_existing(candidates: List[Path]):
 	for path in candidates:
 		if path.exists():
 			return joblib.load(path)
