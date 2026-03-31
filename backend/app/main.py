@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api import routes_predict, routes_dashboard, routes_home
+from app.router import routes_predict, routes_dashboard, routes_home
 
 app = FastAPI(title="COVID Prediction API")
 

@@ -1,9 +1,11 @@
 from fastapi import APIRouter
-from app.db.mongodb import prediction_collection
+
+from db.mongodb import prediction_collection
 
 router = APIRouter()
 
 @router.get("/history")
-def get_history():
-    data = list(prediction_collection.find({}, {"_id": 0}))
+async def get_history():
+    cursor = prediction_collection.find({}, {"_id": 0})
+    data = await cursor.to_list(length=None)
     return data

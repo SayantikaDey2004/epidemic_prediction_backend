@@ -1,5 +1,6 @@
 fastapi
 uvicorn
-pymongo
+motor
 joblib
 pandas
+scikit-learn
