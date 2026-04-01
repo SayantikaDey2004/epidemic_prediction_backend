@@ -6,7 +6,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import ALLOWED_ORIGINS
 from app.core.exceptions import MLModelError, DatabaseError
-from app.router import routes_predict, routes_dashboard, routes_home
+from app.router import routes_predict, routes_dashboard, routes_home, routes_users
 
 app = FastAPI(title="COVID Prediction API")
 
@@ -77,3 +77,4 @@ async def database_exception_handler(request: Request, exc: DatabaseError):
 app.include_router(routes_home.router)
 app.include_router(routes_predict.router)
 app.include_router(routes_dashboard.router)
+app.include_router(routes_users.router)

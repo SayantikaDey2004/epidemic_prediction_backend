@@ -10,7 +10,7 @@ from db.mongodb import prediction_collection
 async def create_prediction(input_data: PredictionInput) -> Dict[str, Any]:
 	"""Run ML prediction and persist the result to the database."""
 
-	payload = input_data.dict()
+	payload = input_data.model_dump(exclude_none=True) if hasattr(input_data, "model_dump") else input_data.dict(exclude_none=True)
 
 	try:
 		result = make_prediction(payload)

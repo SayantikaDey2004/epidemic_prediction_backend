@@ -7,10 +7,17 @@ PROJECT_DIR = Path(__file__).resolve().parents[3]
 
 def _load_first_existing(candidates: List[Path]):
 	for path in candidates:
-		if path.exists():
+		if not path.exists():
+			continue
+
+		try:
 			return joblib.load(path)
-	names = ", ".join(str(p) for p in candidates)
-	raise FileNotFoundError(f"No model file found. Tried: {names}")
+		except Exception:
+			# Continue scanning candidates so local development can still run
+			# when one artifact is incompatible with the active environment.
+			continue
+
+	return None
 
 
 regressor = _load_first_existing(

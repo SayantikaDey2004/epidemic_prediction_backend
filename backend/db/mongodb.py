@@ -6,3 +6,4 @@ db = client[DB_NAME]
 
 # Use the existing 'hotspot' collection in the epidemic_spread_prediction database
 prediction_collection = db["hotspot"]
+user_collection = db["users"]
