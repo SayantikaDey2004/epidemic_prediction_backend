@@ -7,8 +7,15 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.core.config import ALLOWED_ORIGINS
 from app.core.exceptions import MLModelError, DatabaseError
 from app.router import routes_predict, routes_dashboard, routes_home, routes_users
+from db.mongodb import ensure_prediction_indexes, cleanup_legacy_prediction_collections
 
 app = FastAPI(title="COVID Prediction API")
+
+
+@app.on_event("startup")
+async def startup_event():
+	await cleanup_legacy_prediction_collections()
+	await ensure_prediction_indexes()
 
 
 app.add_middleware(

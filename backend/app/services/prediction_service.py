@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 from app.core.exceptions import MLModelError, DatabaseError
 from app.ml.predictor import make_prediction
 from app.schemas.schemas import PredictionInput
-from db.mongodb import nextdaycases_collection, prediction_collection, risks_collection
+from db.mongodb import prediction_collection
 
 
 async def create_prediction(input_data: PredictionInput) -> Dict[str, Any]:
@@ -25,32 +25,25 @@ async def create_prediction(input_data: PredictionInput) -> Dict[str, Any]:
 		if isinstance(first_region, dict):
 			risk_score = first_region.get("risk")
 
-	record = {
-		"input": payload,
-		"output": result,
-		"timestamp": timestamp,
-	}
-
-	nextdaycases_record = {
-		"region": region,
-		"predicted_cases": result.get("predicted_cases"),
-		"timestamp": timestamp,
-	}
-
-	risks_record = {
+	prediction_record = {
 		"region": region,
 		"risk": result.get("risk"),
 		"predicted_risk": result.get("predicted_risk"),
 		"risk_score": risk_score,
+		"predicted_cases": result.get("predicted_cases"),
+		"hotspot_level": result.get("hotspot_level"),
 		"timestamp": timestamp,
 	}
 
 	try:
-		await prediction_collection.insert_one(record)
-		await nextdaycases_collection.insert_one(nextdaycases_record)
-		await risks_collection.insert_one(risks_record)
+		# Keep one latest document per region in a single collection.
+		await prediction_collection.update_one(
+			{"region": region},
+			{"$set": prediction_record},
+			upsert=True,
+		)
 	except Exception as exc:  # noqa: BLE001
-		raise DatabaseError("Failed to store prediction in prediction collections") from exc
+		raise DatabaseError("Failed to store prediction") from exc
 
 	return result
 
