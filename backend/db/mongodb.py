@@ -4,6 +4,8 @@ from app.core.config import MONGO_URL, DB_NAME
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
-# Use the existing 'hotspot' collection in the epidemic_spread_prediction database
+# Prediction-related collections
 prediction_collection = db["hotspot"]
+nextdaycases_collection = db["Nextdaycases"]
+risks_collection = db["risks"]
 user_collection = db["users"]

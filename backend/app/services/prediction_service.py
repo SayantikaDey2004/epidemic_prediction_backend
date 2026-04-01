@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 from app.core.exceptions import MLModelError, DatabaseError
 from app.ml.predictor import make_prediction
 from app.schemas.schemas import PredictionInput
-from db.mongodb import prediction_collection
+from db.mongodb import nextdaycases_collection, prediction_collection, risks_collection
 
 
 async def create_prediction(input_data: PredictionInput) -> Dict[str, Any]:
@@ -17,16 +17,40 @@ async def create_prediction(input_data: PredictionInput) -> Dict[str, Any]:
 	except Exception as exc:  # noqa: BLE001
 		raise MLModelError("Failed to generate prediction") from exc
 
+	timestamp = datetime.utcnow()
+	region = result.get("region") or payload.get("region") or "Global"
+	risk_score = None
+	if isinstance(result.get("regions"), list) and result["regions"]:
+		first_region = result["regions"][0]
+		if isinstance(first_region, dict):
+			risk_score = first_region.get("risk")
+
 	record = {
 		"input": payload,
 		"output": result,
-		"timestamp": datetime.utcnow(),
+		"timestamp": timestamp,
+	}
+
+	nextdaycases_record = {
+		"region": region,
+		"predicted_cases": result.get("predicted_cases"),
+		"timestamp": timestamp,
+	}
+
+	risks_record = {
+		"region": region,
+		"risk": result.get("risk"),
+		"predicted_risk": result.get("predicted_risk"),
+		"risk_score": risk_score,
+		"timestamp": timestamp,
 	}
 
 	try:
 		await prediction_collection.insert_one(record)
+		await nextdaycases_collection.insert_one(nextdaycases_record)
+		await risks_collection.insert_one(risks_record)
 	except Exception as exc:  # noqa: BLE001
-		raise DatabaseError("Failed to store prediction in database") from exc
+		raise DatabaseError("Failed to store prediction in prediction collections") from exc
 
 	return result
 
