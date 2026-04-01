@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 from app.core.exceptions import MLModelError, DatabaseError
 from app.ml.predictor import make_prediction
 from app.schemas.schemas import PredictionInput
-from db.mongodb import prediction_collection
+from db.mongodb import prediction_collection, cleanup_legacy_prediction_collections
 
 
 async def create_prediction(input_data: PredictionInput) -> Dict[str, Any]:
@@ -36,6 +36,9 @@ async def create_prediction(input_data: PredictionInput) -> Dict[str, Any]:
 	}
 
 	try:
+		# Defensive cleanup in case an older service recreated legacy collections.
+		await cleanup_legacy_prediction_collections()
+
 		# Keep one latest document per region in a single collection.
 		await prediction_collection.update_one(
 			{"region": region},
