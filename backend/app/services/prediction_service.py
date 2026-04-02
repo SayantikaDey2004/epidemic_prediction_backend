@@ -15,10 +15,10 @@ async def create_prediction(input_data: PredictionInput) -> Dict[str, Any]:
 	try:
 		result = make_prediction(payload)
 	except Exception as exc:  # noqa: BLE001
-		raise MLModelError("Failed to generate prediction") from exc
+		raise MLModelError(str(exc)) from exc
 
 	timestamp = datetime.utcnow()
-	region = result.get("region") or payload.get("region") or "Global"
+	region = result.get("country") or result.get("region") or payload.get("country") or payload.get("region") or "Global"
 	risk_score = None
 	if isinstance(result.get("regions"), list) and result["regions"]:
 		first_region = result["regions"][0]

@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 class PredictionInput(BaseModel):
+    country: Optional[str] = Field(default=None, min_length=1, max_length=120)
     region: Optional[str] = Field(default=None, min_length=1, max_length=120)
     feature1: Optional[float] = None
     feature2: Optional[float] = None
