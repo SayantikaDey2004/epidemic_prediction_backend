@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Any, Dict
+from pymongo.errors import DuplicateKeyError
 
 from app.core.exceptions import DatabaseError
 from app.schemas.schemas import (
@@ -72,6 +73,8 @@ async def signup_user(payload: UserSignupRequest) -> Dict[str, Any]:
 
     try:
         await user_collection.insert_one(new_user)
+    except DuplicateKeyError as exc:
+        raise UserOperationError("An account already exists with this email.", 409) from exc
     except Exception as exc:  # noqa: BLE001
         raise DatabaseError("Failed to create user account") from exc
 

@@ -10,17 +10,11 @@ except ImportError:  # pragma: no cover
 
 _THIS_FILE = Path(__file__).resolve()
 _BACKEND_ROOT = _THIS_FILE.parents[2]
-_WORKSPACE_ROOT = _THIS_FILE.parents[3]
 
-# Load env vars in two steps:
-# 1) Workspace .env can provide defaults.
-# 2) Backend .env overrides everything for this service so runtime is deterministic.
+# Load env vars for backend service only from backend/.env.
+# This prevents workspace/global env files from silently switching databases.
 if load_dotenv is not None:
-	_workspace_env = _WORKSPACE_ROOT / ".env"
 	_backend_env = _BACKEND_ROOT / ".env"
-
-	if _workspace_env.exists():
-		load_dotenv(_workspace_env, override=False)
 
 	if _backend_env.exists():
 		load_dotenv(_backend_env, override=True)
