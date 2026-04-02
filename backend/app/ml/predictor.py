@@ -1,7 +1,3 @@
-import bisect
-import math
-import time
-
 from app.ml.loader import regressor, classifier
 from app.ml.country_features import (
     build_model_feature_vector,
@@ -10,8 +6,7 @@ from app.ml.country_features import (
 )
 
 
-_RISK_DISTRIBUTION_TTL_SECONDS = 60 * 30
-_risk_distribution_cache: tuple[float, list[float]] | None = None
+_HIGH_RISK_PROBABILITY_THRESHOLD = 0.14
 
 
 def _score_from_hotspot_level(hotspot_level: int) -> int:
@@ -26,6 +21,16 @@ def _risk_label(score: float) -> str:
     if score >= 67:
         return "High"
     if score >= 34:
+        return "Medium"
+    return "Low"
+
+
+def _risk_label_from_models(hotspot_level: int, hotspot_probabilities: dict[str, float]) -> str:
+    p_high = max(0.0, float(hotspot_probabilities.get("high", 0.0)))
+
+    if hotspot_level >= 2 or p_high >= _HIGH_RISK_PROBABILITY_THRESHOLD:
+        return "High"
+    if hotspot_level == 1:
         return "Medium"
     return "Low"
 
@@ -96,32 +101,45 @@ def _hotspot_signal(hotspot_level: int, hotspot_probabilities: dict[str, float])
     return max(base_signal, min(1.0, blended_signal))
 
 
-def _compose_risk_score(
-    cases: float,
+def _normalize_model_risk(risk: float | None) -> float | None:
+    if risk is None:
+        return None
+
+    normalized = float(risk)
+    if normalized > 1.0:
+        normalized = normalized / 100.0
+
+    return max(0.0, min(1.0, normalized))
+
+
+def _final_risk_score(
     risk: float | None,
     hotspot_level: int,
-    hotspot_signal: float,
+    hotspot_probabilities: dict[str, float],
+    risk_label: str,
 ) -> float:
-    if risk is None:
-        base_risk = _score_from_hotspot_level(hotspot_level) / 100.0
-    else:
-        raw_risk = float(risk)
-        base_risk = raw_risk if raw_risk <= 1 else raw_risk / 100.0
-
-    base_risk = max(0.0, min(1.0, base_risk))
-    safe_cases = max(0.0, float(cases))
-    case_signal = math.log1p(safe_cases) / math.log1p(50000.0)
-    case_signal = max(0.0, min(1.0, case_signal))
-
-    combined_risk = (
-        (base_risk * 0.55)
-        + (hotspot_signal * 0.30)
-        + (case_signal * 0.15)
+    normalized_risk = _normalize_model_risk(risk)
+    base_score = (
+        normalized_risk * 100.0
+        if normalized_risk is not None
+        else float(_score_from_hotspot_level(hotspot_level))
     )
 
-    # Sigmoid calibration widens 0-100 spread while preserving model ranking.
-    calibrated = 1.0 / (1.0 + math.exp(-8.0 * (combined_risk - 0.45)))
-    return max(0.0, min(100.0, calibrated * 100.0))
+    p_medium = max(0.0, float(hotspot_probabilities.get("medium", 0.0)))
+    p_high = max(0.0, float(hotspot_probabilities.get("high", 0.0)))
+
+    if risk_label == "High":
+        high_confidence = (p_high - _HIGH_RISK_PROBABILITY_THRESHOLD) / (1.0 - _HIGH_RISK_PROBABILITY_THRESHOLD)
+        high_confidence = max(0.0, min(1.0, high_confidence))
+        return max(67.0, min(100.0, 67.0 + (high_confidence * 33.0)))
+
+    if risk_label == "Medium":
+        medium_support = (p_medium * 0.6) + (p_high * 0.4)
+        medium_support = max(0.0, min(1.0, medium_support))
+        return max(34.0, min(66.0, 34.0 + (medium_support * 32.0)))
+
+    low_attenuation = max(0.2, min(1.0, 1.0 - p_high))
+    return max(0.0, min(33.0, base_score * low_attenuation))
 
 
 def _predict_model_outputs(country: str) -> dict[str, object]:
@@ -141,75 +159,56 @@ def _predict_model_outputs(country: str) -> dict[str, object]:
 
     hotspot_level = _hotspot_as_int(hotspot_pred)
     hotspot_probabilities = _hotspot_probabilities(classifier, X, hotspot_level)
-    hotspot_confidence = _hotspot_signal(hotspot_level, hotspot_probabilities)
-    raw_score = _compose_risk_score(cases, risk, hotspot_level, hotspot_confidence)
+    normalized_risk = _normalize_model_risk(risk)
+    base_score = normalized_risk * 100.0 if normalized_risk is not None else float(_score_from_hotspot_level(hotspot_level))
+    risk_label = _risk_label_from_models(hotspot_level, hotspot_probabilities)
+    raw_score = _final_risk_score(risk, hotspot_level, hotspot_probabilities, risk_label)
 
     return {
         "cases": cases,
         "risk": risk,
         "hotspot_level": hotspot_level,
         "hotspot_probabilities": hotspot_probabilities,
+        "risk_label": risk_label,
+        "base_score": base_score,
         "raw_score": raw_score,
         "feature_meta": feature_meta,
     }
 
 
-def _get_risk_score_distribution() -> list[float]:
-    global _risk_distribution_cache
+def get_model_summary() -> dict[str, object]:
+    scores: list[float] = []
+    counts = {"Low": 0, "Medium": 0, "High": 0}
 
-    now = time.time()
-    if _risk_distribution_cache and now - _risk_distribution_cache[0] < _RISK_DISTRIBUTION_TTL_SECONDS:
-        return _risk_distribution_cache[1]
-
-    distribution: list[float] = []
     for country in list_available_countries():
         try:
             outputs = _predict_model_outputs(country)
-            distribution.append(float(outputs["raw_score"]))
+            score = float(outputs["raw_score"])
+            label = str(outputs.get("risk_label") or _risk_label(score))
+            scores.append(score)
+            counts[label] += 1
         except Exception:
             continue
 
-    if not distribution:
-        raise RuntimeError("Unable to build model score distribution")
-
-    distribution.sort()
-    _risk_distribution_cache = (now, distribution)
-    return distribution
-
-
-def _to_percentile_score(raw_score: float, distribution: list[float]) -> float:
-    if not distribution:
-        return max(0.0, min(100.0, raw_score))
-
-    if len(distribution) == 1:
-        return 50.0
-
-    rank_index = bisect.bisect_right(distribution, raw_score) - 1
-    rank_index = max(0, min(len(distribution) - 1, rank_index))
-    percentile = (rank_index / (len(distribution) - 1)) * 100.0
-    return max(0.0, min(100.0, percentile))
-
-
-def get_model_summary() -> dict[str, object]:
-    distribution = _get_risk_score_distribution()
-    counts = {"Low": 0, "Medium": 0, "High": 0}
-
-    if len(distribution) == 1:
-        counts[_risk_label(50.0)] = 1
-    else:
-        for idx in range(len(distribution)):
-            percentile = (idx / (len(distribution) - 1)) * 100.0
-            counts[_risk_label(percentile)] += 1
+    if not scores:
+        return {
+            "countries_considered": 0,
+            "country_scope": "strict_dataset_countries_only",
+            "risk_label_counts": counts,
+            "thresholds": {"low_max": 33, "medium_max": 66, "high_min": 67},
+            "scoring": "classifier_category_with_regressor_support",
+            "raw_score_range": {"min": 0.0, "max": 0.0},
+        }
 
     return {
-        "countries_considered": len(distribution),
+        "countries_considered": len(scores),
         "country_scope": "strict_dataset_countries_only",
         "risk_label_counts": counts,
         "thresholds": {"low_max": 33, "medium_max": 66, "high_min": 67},
-        "scoring": "model_only_percentile_ranking",
+        "scoring": "classifier_category_with_regressor_support",
         "raw_score_range": {
-            "min": round(distribution[0], 4),
-            "max": round(distribution[-1], 4),
+            "min": round(min(scores), 4),
+            "max": round(max(scores), 4),
         },
     }
 
@@ -232,27 +231,26 @@ def make_prediction(data: dict):
     risk = outputs["risk"]
     hotspot_level = int(outputs["hotspot_level"])
     hotspot_probabilities = outputs["hotspot_probabilities"]
+    risk_label = str(outputs.get("risk_label") or "Low")
+    base_score = float(outputs.get("base_score") or 0.0)
     raw_score = float(outputs["raw_score"])
     feature_meta = outputs["feature_meta"]
-
-    try:
-        risk_distribution = _get_risk_score_distribution()
-        risk_score = _to_percentile_score(raw_score, risk_distribution)
-    except Exception:
-        risk_score = raw_score
+    risk_score = max(0.0, min(100.0, raw_score))
 
     resolved_country = str(feature_meta.get("country") or requested_country)
 
     result = {
         "country": resolved_country,
         "region": resolved_country,
-        "risk": _risk_label(risk_score),
+        "risk": risk_label,
         "regions": [{"name": resolved_country, "risk": round(risk_score, 2)}],
         "predicted_cases": cases,
         "hotspot_level": hotspot_level,
         "feature_snapshot_date": feature_meta.get("date"),
         "model_evidence": {
-            "raw_model_score": round(raw_score, 4),
+            "raw_model_score": round(base_score, 4),
+            "final_risk_score": round(risk_score, 4),
+            "risk_label": risk_label,
             "percentile_score": round(risk_score, 4),
             "feature_snapshot_date": feature_meta.get("date"),
             "hotspot_probabilities": {
@@ -260,7 +258,7 @@ def make_prediction(data: dict):
                 "medium": round(float(hotspot_probabilities.get("medium", 0.0)), 4),
                 "high": round(float(hotspot_probabilities.get("high", 0.0)), 4),
             },
-            "scoring": "model_only_percentile_ranking",
+            "scoring": "classifier_category_with_regressor_support",
         },
     }
 
