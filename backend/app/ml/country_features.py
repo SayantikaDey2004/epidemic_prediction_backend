@@ -55,6 +55,7 @@ _country_list_cache: Tuple[float, List[str]] | None = None
 _country_history_cache: Dict[str, Tuple[float, List[Dict[str, float]]]] = {}
 _country_alias_map_cache: Tuple[float, Dict[str, str]] | None = None
 _history_dataset_cache: Tuple[float, Dict[str, Dict[str, object]]] | None = None
+_strict_country_allowlist_cache: Tuple[float, set[str]] | None = None
 
 COUNTRY_ALIASES = {
     "united states": "USA",
@@ -288,6 +289,31 @@ def list_available_countries() -> List[str]:
             pass
 
     return FALLBACK_COUNTRIES
+
+
+def get_strict_country_allowlist() -> set[str]:
+    global _strict_country_allowlist_cache
+
+    now = time.time()
+    if _strict_country_allowlist_cache and now - _strict_country_allowlist_cache[0] < CACHE_TTL_SECONDS:
+        return _strict_country_allowlist_cache[1]
+
+    allowlist: set[str] = set()
+    for country_name in list_available_countries():
+        normalized = _normalize_country_name(country_name)
+        if normalized:
+            allowlist.add(normalized)
+
+    _strict_country_allowlist_cache = (now, allowlist)
+    return allowlist
+
+
+def is_country_in_training_scope(country: str) -> bool:
+    normalized = _normalize_country_name(country)
+    if not normalized:
+        return False
+
+    return normalized in get_strict_country_allowlist()
 
 
 def _fetch_country_timeline(country: str) -> List[Dict[str, float]]:

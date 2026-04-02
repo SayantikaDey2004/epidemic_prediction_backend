@@ -3,7 +3,11 @@ import math
 import time
 
 from app.ml.loader import regressor, classifier
-from app.ml.country_features import build_model_feature_vector, list_available_countries
+from app.ml.country_features import (
+    build_model_feature_vector,
+    is_country_in_training_scope,
+    list_available_countries,
+)
 
 
 _RISK_DISTRIBUTION_TTL_SECONDS = 60 * 30
@@ -199,6 +203,7 @@ def get_model_summary() -> dict[str, object]:
 
     return {
         "countries_considered": len(distribution),
+        "country_scope": "strict_dataset_countries_only",
         "risk_label_counts": counts,
         "thresholds": {"low_max": 33, "medium_max": 66, "high_min": 67},
         "scoring": "model_only_percentile_ranking",
@@ -213,6 +218,11 @@ def make_prediction(data: dict):
     requested_country = str(data.get("country") or data.get("region") or "").strip()
     if not requested_country:
         raise ValueError("Country is required to run prediction")
+
+    if not is_country_in_training_scope(requested_country):
+        raise ValueError(
+            f"Country '{requested_country}' is outside the model training dataset scope. Please choose a listed country."
+        )
 
     if regressor is None or classifier is None:
         raise RuntimeError("Model artifacts could not be loaded. Check Python package versions and model files.")
