@@ -12,10 +12,18 @@ _THIS_FILE = Path(__file__).resolve()
 _BACKEND_ROOT = _THIS_FILE.parents[2]
 _WORKSPACE_ROOT = _THIS_FILE.parents[3]
 
-# Load env vars from workspace root or backend root when available.
-for _env_path in (_WORKSPACE_ROOT / ".env", _BACKEND_ROOT / ".env"):
-	if _env_path.exists() and load_dotenv is not None:
-		load_dotenv(_env_path, override=False)
+# Load env vars in two steps:
+# 1) Workspace .env can provide defaults.
+# 2) Backend .env overrides everything for this service so runtime is deterministic.
+if load_dotenv is not None:
+	_workspace_env = _WORKSPACE_ROOT / ".env"
+	_backend_env = _BACKEND_ROOT / ".env"
+
+	if _workspace_env.exists():
+		load_dotenv(_workspace_env, override=False)
+
+	if _backend_env.exists():
+		load_dotenv(_backend_env, override=True)
 
 MONGO_URL: str = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME: str = os.getenv("DB_NAME", "epidemic_spread_prediction")

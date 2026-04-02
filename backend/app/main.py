@@ -3,8 +3,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from urllib.parse import urlsplit
 
-from app.core.config import ALLOWED_ORIGINS
+from app.core.config import ALLOWED_ORIGINS, DB_NAME, MONGO_URL
 from app.core.exceptions import MLModelError, DatabaseError
 from app.router import routes_predict, routes_dashboard, routes_home, routes_users
 from db.mongodb import ensure_prediction_indexes, cleanup_legacy_prediction_collections
@@ -12,10 +13,21 @@ from db.mongodb import ensure_prediction_indexes, cleanup_legacy_prediction_coll
 app = FastAPI(title="COVID Prediction API")
 
 
+def _mongo_host_label(connection_string: str) -> str:
+	try:
+		parsed = urlsplit(connection_string)
+		host = parsed.hostname or "unknown"
+		port = f":{parsed.port}" if parsed.port else ""
+		return f"{host}{port}"
+	except Exception:
+		return "unknown"
+
+
 @app.on_event("startup")
 async def startup_event():
 	await cleanup_legacy_prediction_collections()
 	await ensure_prediction_indexes()
+	print(f"[startup] Mongo host={_mongo_host_label(MONGO_URL)} db={DB_NAME}")
 
 
 app.add_middleware(
