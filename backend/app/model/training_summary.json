@@ -1,0 +1,28 @@
+{
+  "samples_total": 7236,
+  "train_samples": 5427,
+  "test_samples": 1809,
+  "countries_total": 201,
+  "countries_evaluated": 201,
+  "target_case_scale_p95": 2068.0,
+  "risk_quantiles": {
+    "q33": 0.0,
+    "q66": 0.2158
+  },
+  "test_metrics": {
+    "mae": 369.2435,
+    "rmse": 1927.9585,
+    "smape_pct": 131.2248,
+    "classifier_accuracy": 0.8966
+  },
+  "country_status_counts": {
+    "good": 15,
+    "ok": 19,
+    "poor": 167
+  },
+  "artifacts": {
+    "regressor": "C:\\Users\\sayan\\OneDrive\\Desktop\\CodeCure\\Epidemic Spread Prediction\\backend\\app\\model\\regressor.joblib",
+    "classifier": "C:\\Users\\sayan\\OneDrive\\Desktop\\CodeCure\\Epidemic Spread Prediction\\backend\\app\\model\\classifier.joblib",
+    "country_report": "C:\\Users\\sayan\\OneDrive\\Desktop\\CodeCure\\Epidemic Spread Prediction\\backend\\app\\country_accuracy_report.csv"
+  }
+}

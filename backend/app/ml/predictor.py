@@ -7,6 +7,8 @@ from app.ml.country_features import (
 
 
 _HIGH_RISK_PROBABILITY_THRESHOLD = 0.14
+_LOW_RISK_THRESHOLD = 0.08
+_HIGH_RISK_THRESHOLD = 0.30
 
 
 def _score_from_hotspot_level(hotspot_level: int) -> int:
@@ -25,12 +27,14 @@ def _risk_label(score: float) -> str:
     return "Low"
 
 
-def _risk_label_from_models(hotspot_level: int, hotspot_probabilities: dict[str, float]) -> str:
-    p_high = max(0.0, float(hotspot_probabilities.get("high", 0.0)))
+def _risk_label_from_regressor(risk: float | None) -> str:
+    normalized_risk = _normalize_model_risk(risk)
+    if normalized_risk is None:
+        return "Low"
 
-    if hotspot_level >= 2 or p_high >= _HIGH_RISK_PROBABILITY_THRESHOLD:
+    if normalized_risk >= _HIGH_RISK_THRESHOLD:
         return "High"
-    if hotspot_level == 1:
+    if normalized_risk >= _LOW_RISK_THRESHOLD:
         return "Medium"
     return "Low"
 
@@ -131,15 +135,17 @@ def _final_risk_score(
     if risk_label == "High":
         high_confidence = (p_high - _HIGH_RISK_PROBABILITY_THRESHOLD) / (1.0 - _HIGH_RISK_PROBABILITY_THRESHOLD)
         high_confidence = max(0.0, min(1.0, high_confidence))
-        return max(67.0, min(100.0, 67.0 + (high_confidence * 33.0)))
+        base_high = max(67.0, min(95.0, (base_score * 100.0) if base_score <= 1.0 else base_score))
+        return max(67.0, min(100.0, base_high + (high_confidence * 5.0)))
 
     if risk_label == "Medium":
-        medium_support = (p_medium * 0.6) + (p_high * 0.4)
-        medium_support = max(0.0, min(1.0, medium_support))
-        return max(34.0, min(66.0, 34.0 + (medium_support * 32.0)))
+        base_medium = max(34.0, min(66.0, (base_score * 100.0) if base_score <= 1.0 else base_score))
+        medium_support = max(0.0, min(1.0, p_medium))
+        return max(34.0, min(66.0, base_medium + ((medium_support - 0.5) * 6.0)))
 
     low_attenuation = max(0.2, min(1.0, 1.0 - p_high))
-    return max(0.0, min(33.0, base_score * low_attenuation))
+    low_base = (base_score * 100.0) if base_score <= 1.0 else base_score
+    return max(0.0, min(33.0, low_base * low_attenuation))
 
 
 def _predict_model_outputs(country: str) -> dict[str, object]:
@@ -161,7 +167,7 @@ def _predict_model_outputs(country: str) -> dict[str, object]:
     hotspot_probabilities = _hotspot_probabilities(classifier, X, hotspot_level)
     normalized_risk = _normalize_model_risk(risk)
     base_score = normalized_risk * 100.0 if normalized_risk is not None else float(_score_from_hotspot_level(hotspot_level))
-    risk_label = _risk_label_from_models(hotspot_level, hotspot_probabilities)
+    risk_label = _risk_label_from_regressor(risk)
     raw_score = _final_risk_score(risk, hotspot_level, hotspot_probabilities, risk_label)
 
     return {
